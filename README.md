@@ -51,6 +51,36 @@ We're open to suggestions! Feel free open an issue or create a pull request.
 
 Please read [Contributing](CONTRIBUTING.md) for details on contributions.
 
+## Troubleshooting
+
+#### Converter failed to start
+
+Symptom:
+* Converter did not start after being configured.
+
+Possible cause:
+* WATS Client Service does not have folder permission to the input path.
+* WATS Client Service was not restarted after configuration.
+
+Possible solution:
+* [Give NETWORK SERVICE write permission to the input path folder](https://virinco.zendesk.com/hc/en-us/articles/207424113-WATS-Client-Add-write-permission-to-NETWORK-SERVICE-on-file-system-to-allow-converter-access)
+* Make a change in a converter configuration and undo the change, click APPLY. When asked to restart the service, click Yes.
+
+#### Converter class drop down list is empty
+
+Symptom:
+* The converter class drop down list in the Client configurator is empty after adding a converter DLL.
+
+Possible cause:
+* The DLL file is blocked. Windows blocks files that it thinks are untrusted, which stops them from being executed.
+
+Possible solution:
+* Open properties on the file and unblock it.
+
+#### Other
+
+Contact Virinco support, and include the wats.log file: [Where to find the wats log file at the Client](https://virinco.zendesk.com/hc/en-us/articles/207424033-Where-to-find-the-wats-log-file-at-the-Client).
+
 ## Contact
 
 * Issues with the converter or suggestions for improvements can be submitted as an issue here on GitHub.
