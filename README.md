@@ -32,7 +32,6 @@ This converter uses the following parameters:
 | cultureCode       | en-US                 | Culture used for parsing numbers.                              |
 | fileEncoding      | 1252                  | File encoding of the file to import.                           |
 | validationMode    | ThrowExceptions       | ThrowExceptions or AutoTruncate.                               |
-| converterFormat   | B						| A = without Net_Name, B = with Net_Name
 
 ## Testing
 
