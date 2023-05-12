@@ -50,9 +50,18 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Examples\ATVG02_43393848.1023824957283_20141227_152724.ATD">
+    <Content Include="Examples\Readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Examples\PB2939800_E_BOT-20230420130239.ATD">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </None>
+    <None Include="Examples\V682589_K_TOP-20230504130808.ATD">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Examples\V682780_B_BOT-20230301082027.ATD">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
