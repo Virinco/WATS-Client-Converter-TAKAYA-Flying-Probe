@@ -16,60 +16,77 @@ namespace TAKAYA_FlyingProbeConverter
             return (Double.TryParse(input, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | NumberStyles.AllowTrailingWhite, currentCulture.NumberFormat, out res));
         }
 
+        public FlyingProbeConverter():base()
+        { }
+
+
         UUTStatusType uutStatusFromTester;
-        //FPTFormat: A=without Net_Name, B=With Net_Name
-        string converterFormat = "B"; // Assume this format
         bool readFirstHeader = false;
+
+        public bool SubmitCurrentUUT()
+        {
+            if (!String.IsNullOrEmpty(currentUUT.SerialNumber) && !String.IsNullOrEmpty(currentUUT.PartNumber))
+            {
+                if (uutStatusFromTester != currentUUT.Status)
+                {
+                    //Log difference
+                    currentUUT.AddMiscUUTInfo("UUTStatusDiff", String.Format("FPT={0}, WATS={1}", uutStatusFromTester, currentUUT.Status));
+                    currentUUT.Status = uutStatusFromTester; //Use status from tester
+                }
+                //Adjust operation type to SW Debug if file name contains _debug
+                if (apiRef.ConversionSource.SourceFile.Name.ToLower().Contains("_debug"))
+                    currentUUT.OperationType = apiRef.GetOperationType("10");
+                SubmitUUT(); //If EndTest was missing
+                readFirstHeader = false; //Prepare for next report
+                return true;
+            }
+            else
+            {
+                ParseError("Missing SN/PN", apiRef.ConversionSource.SourceFile.FullName);
+                return false;
+            }
+        }
 
         protected override bool ProcessMatchedLine(TextConverterBase.SearchFields.SearchMatch match, ref TextConverterBase.ReportReadState readState)
         {
             if (match == null)
-            {
-                //EOF
-                if (!String.IsNullOrEmpty(currentUUT.SerialNumber) && !String.IsNullOrEmpty(currentUUT.PartNumber))
-                {
-                    if (uutStatusFromTester != currentUUT.Status)
-                    {
-                        //Log difference
-                        currentUUT.AddMiscUUTInfo("UUTStatusDiff", String.Format("FPT={0}, WATS={1}", uutStatusFromTester, currentUUT.Status));
-                        currentUUT.Status = uutStatusFromTester; //Use status from tester
-                    }
-                    //Adjust operation type to SW Debug if file name contains _debug
-                    if (apiRef.ConversionSource.SourceFile.Name.ToLower().Contains("_debug"))
-                        currentUUT.OperationType = apiRef.GetOperationType("10");
-                    SubmitUUT(); //If EndTest was missing
-                    readFirstHeader = false; //Prepare for next report
-                    return true;
-                }
-                else
-                {
-                    ParseError("Missing SN/PN", apiRef.ConversionSource.SourceFile.FullName);
-                    return false;
-                }
+            {                
+                return SubmitCurrentUUT(); //EOF
             }
             switch (match.matchField.fieldName)
             {
-                case "TestHeading":
+                case "TestHeading1":
                     if (readFirstHeader)
                         currentReportState = ReportReadState.InTest;
                     else
                         readFirstHeader = true;
                     break;
-                case "Serialnumber":
-                    currentUUT.SerialNumber = (string)match.GetSubField("Revision") + (string)match.GetSubField("SerialNumber");
-                    currentUUT.PartNumber = (string)match.GetSubField("PartNumber");
-                    currentUUT.PartRevisionNumber = (string)match.GetSubField("Revision");
+                case "Group":
+                    if (match.completeLine!= "* GROUP No.1   *") //Skip first group, submit following 
+                    {
+                        SubmitCurrentUUT();
+                        if (match.matchField.fieldName=="Group")
+                        {
+                            UUTReport newUUT=apiRef.CreateUUTReport(currentUUT.Operator, currentUUT.PartNumber, currentUUT.PartRevisionNumber, "", currentUUT.OperationType, currentUUT.SequenceName, currentUUT.SequenceVersion);
+                            newUUT.StartDateTime = currentUUT.StartDateTime;
+                            newUUT.ExecutionTime = currentUUT.ExecutionTime;
+                            currentUUT = newUUT;
+                        }
+                    }
                     break;
+
                 case "PassFail":
                     uutStatusFromTester = (UUTStatusType)match.results[0];
                     break;
 
                 case "Step":
+                    if (!IsNumeric(match.completeLine.Substring(0,1)))
+                        return true;
                     //Prepare the test step
                     NumericLimitStep step = currentUUT.GetRootSequenceCall().AddNumericLimitStep(
                         string.Format("{0}_{1}_{2}", match.GetSubField("Parts"), match.GetSubField("Value"), match.GetSubField("Function"))); //Use Parts_Value_Function as step name
 
-                    step.ReportText = String.Format("#{0} H-pin:{1} L-pin:{2}", match.GetSubField("Step_number"), match.GetSubField("H-pin"), match.GetSubField("L-pin"));
+                    step.ReportText = String.Format("#{0} {1} Tol+:{2} Tol-:{3} H-pin:{4} L-pin:{5}", match.GetSubField("Step_number"),match.GetSubField("Comment"), match.GetSubField("Tolerance+"), match.GetSubField("Tolerance-"), match.GetSubField("H-pin"), match.GetSubField("L-pin"));
                     if (match.ExistSubField("Net_Name_Hpin"))
                         step.ReportText += String.Format(" {0} {1}", match.GetSubField("Net_Name_Hpin"), match.GetSubField("Net_Name_Lpin"));
 
@@ -147,52 +164,81 @@ namespace TAKAYA_FlyingProbeConverter
                 this.currentCulture = CultureInfo.InvariantCulture;
                 this.searchFields.culture = CultureInfo.InvariantCulture;
             }
-            if (args.ContainsKey("FPTFormat"))
-            {
-                converterFormat = args["FPTFormat"];
-            }
 
-            searchFields.AddExactField("TestHeading", ReportReadState.InHeader, "@", null, typeof(string), true);
+            testModeType = TestModeType.Import;
+
+            searchFields.AddExactField("TestHeading1", ReportReadState.InHeader, "@", null, typeof(string), true);
             searchFields.AddRegExpField("PassFail", ReportReadState.InHeader, @"^[* ]+(?<Result>(PASS|FAIL))[* ]+", null, typeof(UUTStatusType));
-            SearchFields.RegExpSearchField regExField =
-            searchFields.AddRegExpField("Serialnumber", ReportReadState.Unknown, @"^Serial No.:(?<PartNumber>\w*).(?<Revision>.{3})(?<SerialNumber>.*)", null, typeof(string));
-            regExField.AddSubField("SerialNumber", typeof(string), null, UUTField.SerialNumber);
-            regExField.AddSubField("PartNumber", typeof(string), null, UUTField.PartNumber);
-            regExField.AddSubField("Revision", typeof(string), null, UUTField.PartRevisionNumber);
-
-            searchFields.AddExactField(UUTField.StartDateTime, ReportReadState.InHeader, "DATE ", "yy/MM/dd HH:mm:ss", typeof(DateTime));
+            searchFields.AddExactField(UUTField.PartNumber, ReportReadState.InHeader, "Model:", null, typeof(string));
+            searchFields.AddExactField(UUTField.StartDateTime, ReportReadState.InHeader, "DATE ", "d/M/yyyy HH:mm:ss", typeof(DateTime));
             searchFields.AddRegExpField(UUTField.ExecutionTime, ReportReadState.InHeader, @"^Test time:(?<Time>\d+) s", null, typeof(double));
-            searchFields.AddRegExpField(UUTField.SequenceName, ReportReadState.InHeader, @"^Model:(?<SequenceName>.+).SWX", null, typeof(string));
-            searchFields.AddExactField(UUTField.SequenceVersion, ReportReadState.InHeader, "Version No. :", null, typeof(string));
-            searchFields.AddExactField(UUTField.Operator, ReportReadState.InHeader, "User name :", null, typeof(string));
             searchFields.AddExactField(UUTField.StationName, ReportReadState.InHeader, "Test ID :", null, typeof(string));
-            searchFields.AddExactField(UUTField.Comment, ReportReadState.InHeader, "Message :", null, typeof(string));
+            searchFields.AddExactField(UUTField.SequenceVersion, ReportReadState.InHeader, "Model:", null, typeof(string));
+            searchFields.AddExactField(UUTField.Operator, ReportReadState.InHeader, "User name :", null, typeof(string));
+            
+            searchFields.AddExactField(UUTField.SerialNumber, ReportReadState.Unknown, "Serial No.:", null, typeof(string));
+
+            searchFields.AddExactField("Group", ReportReadState.InTest, "* GROUP No.", null, typeof(string));
 
             SearchFields.ExactSearchField field;
-            field = searchFields.AddExactField("Step", ReportReadState.InTest, "00", null, typeof(string));
+            field = searchFields.AddExactField("Step", ReportReadState.InTest, "", null, typeof(string));
             field.delimiters = new char[] { '\t' };
+            field.AddSubField("Group No.", typeof(string));
             field.AddSubField("Step_number", typeof(string));
-            field.AddSubField("Judgement", typeof(string));
             field.AddSubField("Parts", typeof(string));
             field.AddSubField("Value", typeof(string));
             field.AddSubField("Unit", typeof(string));
-            field.AddSubField("RefValue", typeof(string));
-            field.AddSubField("RefUnit", typeof(string));
-            field.AddSubField("TestValue1", typeof(string));
-            field.AddSubField("Unit1", typeof(string));
-            field.AddSubField("TestValue2", typeof(string));
-            field.AddSubField("Unit2", typeof(string));
-            field.AddSubField("Aux", typeof(string));
             field.AddSubField("Comment", typeof(string));
             field.AddSubField("Location", typeof(string));
             field.AddSubField("H-pin", typeof(string));
-            if (converterFormat == "B") field.AddSubField("Net_Name_Hpin", typeof(string));
+            field.AddSubField("Net_Name_Hpin", typeof(string));
             field.AddSubField("L-pin", typeof(string));
-            if (converterFormat == "B") field.AddSubField("Net_Name_Lpin", typeof(string));
-            field.AddSubField("Function", typeof(string));
+            field.AddSubField("Net_Name_Lpin", typeof(string));
+            field.AddSubField("G-P1", typeof(string));
+            field.AddSubField("Net_Name_G-P1", typeof(string));
+            field.AddSubField("G-P2", typeof(string));
+            field.AddSubField("Net_Name_G-P2", typeof(string));
+            field.AddSubField("Judgement", typeof(string));
+            field.AddSubField("Ref._Value_(EL)", typeof(string));
+            field.AddSubField("Ref._Value_(Fig)", typeof(string));
+            field.AddSubField("RefValue", typeof(string));
+            field.AddSubField("RefUnit", typeof(string));
+            field.AddSubField("Test_Value_1_(EL)", typeof(string));
+            field.AddSubField("Test_Value_1_(Fig)", typeof(string));
+            field.AddSubField("TestValue1", typeof(string));
+            field.AddSubField("Unit1", typeof(string));
+            field.AddSubField("Test_Value_2_(EL)", typeof(string));
+            field.AddSubField("Test_Value_2_(Fig)", typeof(string));
+            field.AddSubField("TestValue2", typeof(string));
+            field.AddSubField("Unit2", typeof(string));
+            field.AddSubField("Date_of_test", typeof(string));
+            field.AddSubField("Time_of_test", typeof(string));
+            field.AddSubField("Measuring_mode", typeof(string));
+            field.AddSubField("Measuring_range", typeof(string));
+            field.AddSubField("Measuring_time", typeof(string));
             field.AddSubField("Tolerance+", typeof(string));
             field.AddSubField("Tolerance-", typeof(string));
-            field.AddSubField("RefValue", typeof(string));
+            field.AddSubField("Access_probe", typeof(string));
+            field.AddSubField("Total_Pass_no", typeof(string));
+            field.AddSubField("Total_NG_No", typeof(string));
+            field.AddSubField("Daily_PASS_no", typeof(string));
+            field.AddSubField("Daily_NG_No", typeof(string));
+            field.AddSubField("Model", typeof(string));
+            field.AddSubField("Testing_time", typeof(string));
+            field.AddSubField("Serial_No1", typeof(string));
+            field.AddSubField("Tester_ID", typeof(string));
+            field.AddSubField("Index", typeof(string));
+            field.AddSubField("XCoor1", typeof(string));
+            field.AddSubField("YCoor1", typeof(string));
+            field.AddSubField("XCoor2", typeof(string));
+            field.AddSubField("YCoor2", typeof(string));
+            field.AddSubField("XCoor3", typeof(string));
+            field.AddSubField("YCoor3", typeof(string));
+            field.AddSubField("XCoor4", typeof(string));
+            field.AddSubField("YCoor4", typeof(string));
+            field.AddSubField("Rack_No", typeof(string));
+            field.AddSubField("A/B_Side", typeof(string));
+            field.AddSubField("Function", typeof(string));
         }
     }
 }

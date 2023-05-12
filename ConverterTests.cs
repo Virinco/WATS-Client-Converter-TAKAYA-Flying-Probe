@@ -14,8 +14,8 @@ namespace TAKAYA_FlyingProbeConverter
         [TestMethod]
         public void SetupClient()
         {
-            SetupAPI(null, "", "Test", true);
-            RegisterClient("your wats", "username", "password");
+            //SetupAPI(null, "", "Test", true);
+            RegisterClient("https://debug.wats.com", "re@virinco.com", "omega-34");
             InitializeAPI(true);
         }
 
@@ -23,20 +23,15 @@ namespace TAKAYA_FlyingProbeConverter
         public void TestFlyingProbeConverter()
         {
             InitializeAPI(true);
-
-            var fileInfo = new FileInfo(@"Examples\ATVG02_43393848.1023824957283_20141227_152724.ATD");
-            var arguments = new Dictionary<string, string>
-            {
-                { "FPTFormat", "A" }
-            };
-
+            var fileInfo = new FileInfo(@"Examples\V682780_B_BOT-20230301082027.ATD");
+            var arguments = new FlyingProbeConverter().ConverterParameters;
             SetConversionSource(fileInfo, new Dictionary<string, string>(), arguments);
-
             var converter = new FlyingProbeConverter(arguments);
             using (FileStream file = fileInfo.Open(FileMode.Open))
             {
                 converter.ImportReport(this, file);
             }
+            SubmitPendingReports();
         }
     }
 }
