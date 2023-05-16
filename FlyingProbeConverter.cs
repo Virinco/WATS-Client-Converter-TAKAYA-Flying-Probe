@@ -70,6 +70,7 @@ namespace TAKAYA_FlyingProbeConverter
                             UUTReport newUUT=apiRef.CreateUUTReport(currentUUT.Operator, currentUUT.PartNumber, currentUUT.PartRevisionNumber, "", currentUUT.OperationType, currentUUT.SequenceName, currentUUT.SequenceVersion);
                             newUUT.StartDateTime = currentUUT.StartDateTime;
                             newUUT.ExecutionTime = currentUUT.ExecutionTime;
+                            newUUT.StationName= currentUUT.StationName;
                             currentUUT = newUUT;
                         }
                     }
