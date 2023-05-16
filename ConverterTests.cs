@@ -15,7 +15,7 @@ namespace TAKAYA_FlyingProbeConverter
         public void SetupClient()
         {
             //SetupAPI(null, "", "Test", true);
-            RegisterClient("https://debug.wats.com", "re@virinco.com", "omega-34");
+            RegisterClient("Your server", "your user", "your password");
             InitializeAPI(true);
         }
 
