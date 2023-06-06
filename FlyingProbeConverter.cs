@@ -169,7 +169,6 @@ namespace TAKAYA_FlyingProbeConverter
             testModeType = TestModeType.Import;
 
             searchFields.AddExactField("TestHeading1", ReportReadState.InHeader, "@", null, typeof(string), true);
-            searchFields.AddRegExpField("PassFail", ReportReadState.InHeader, @"^[* ]+(?<Result>(PASS|FAIL))[* ]+", null, typeof(UUTStatusType));
             searchFields.AddExactField(UUTField.PartNumber, ReportReadState.InHeader, "Model:", null, typeof(string));
             searchFields.AddExactField(UUTField.StartDateTime, ReportReadState.InHeader, "DATE ", "d/M/yyyy HH:mm:ss", typeof(DateTime));
             searchFields.AddRegExpField(UUTField.ExecutionTime, ReportReadState.InHeader, @"^Test time:(?<Time>\d+) s", null, typeof(double));
@@ -180,6 +179,7 @@ namespace TAKAYA_FlyingProbeConverter
             searchFields.AddExactField(UUTField.SerialNumber, ReportReadState.Unknown, "Serial No.:", null, typeof(string));
 
             searchFields.AddExactField("Group", ReportReadState.InTest, "* GROUP No.", null, typeof(string));
+            searchFields.AddRegExpField("PassFail", ReportReadState.InTest, @"^[* ]+(?<Result>(PASS|FAIL))[* ]+", null, typeof(UUTStatusType));
 
             SearchFields.ExactSearchField field;
             field = searchFields.AddExactField("Step", ReportReadState.InTest, "", null, typeof(string));
