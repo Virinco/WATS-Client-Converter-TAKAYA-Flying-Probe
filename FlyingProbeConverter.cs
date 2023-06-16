@@ -76,8 +76,11 @@ namespace TAKAYA_FlyingProbeConverter
                     }
                     break;
 
-                case "PassFail":
-                    uutStatusFromTester = (UUTStatusType)match.results[0];
+                case "PassFail":                   
+                        uutStatusFromTester = (UUTStatusType)match.results[0];
+                    break;
+                case "NoTest":
+                    uutStatusFromTester = UUTStatusType.Failed;
                     break;
 
                 case "Step":
@@ -177,6 +180,7 @@ namespace TAKAYA_FlyingProbeConverter
             searchFields.AddExactField(UUTField.SerialNumber, ReportReadState.Unknown, "Serial No.:", null, typeof(string));
 
             searchFields.AddExactField("Group", ReportReadState.InTest, "* GROUP No.", null, typeof(string));
+            searchFields.AddRegExpField("NoTest", ReportReadState.InTest, @"^[* ]+NO-TEST[* ]+", null, typeof(string));
             searchFields.AddRegExpField("PassFail", ReportReadState.InTest, @"^[* ]+(?<Result>(PASS|FAIL))[* ]+", null, typeof(UUTStatusType));
 
             SearchFields.ExactSearchField field;
