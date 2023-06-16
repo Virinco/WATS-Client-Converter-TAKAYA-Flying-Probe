@@ -166,8 +166,6 @@ namespace TAKAYA_FlyingProbeConverter
                 this.searchFields.culture = CultureInfo.InvariantCulture;
             }
 
-            testModeType = TestModeType.Import;
-
             searchFields.AddExactField("TestHeading1", ReportReadState.InHeader, "@", null, typeof(string), true);
             searchFields.AddExactField(UUTField.PartNumber, ReportReadState.InHeader, "Model:", null, typeof(string));
             searchFields.AddExactField(UUTField.StartDateTime, ReportReadState.InHeader, "DATE ", "d/M/yyyy HH:mm:ss", typeof(DateTime));
