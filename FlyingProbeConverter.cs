@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Policy;
 using System.Text;
 using Virinco.WATS.Integration.TextConverter;
 using Virinco.WATS.Interface;
@@ -16,7 +17,7 @@ namespace TAKAYA_FlyingProbeConverter
             return (Double.TryParse(input, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign | NumberStyles.AllowTrailingWhite, currentCulture.NumberFormat, out res));
         }
 
-        public FlyingProbeConverter():base()
+        public FlyingProbeConverter() : base()
         { }
 
 
@@ -50,7 +51,7 @@ namespace TAKAYA_FlyingProbeConverter
         protected override bool ProcessMatchedLine(TextConverterBase.SearchFields.SearchMatch match, ref TextConverterBase.ReportReadState readState)
         {
             if (match == null)
-            {                
+            {
                 return SubmitCurrentUUT(); //EOF
             }
             switch (match.matchField.fieldName)
@@ -62,35 +63,35 @@ namespace TAKAYA_FlyingProbeConverter
                         readFirstHeader = true;
                     break;
                 case "Group":
-                    if (match.completeLine!= "* GROUP No.1   *") //Skip first group, submit following 
+                    if (match.completeLine != "* GROUP No.1   *") //Skip first group, submit following 
                     {
                         SubmitCurrentUUT();
-                        if (match.matchField.fieldName=="Group")
+                        if (match.matchField.fieldName == "Group")
                         {
-                            UUTReport newUUT=apiRef.CreateUUTReport(currentUUT.Operator, currentUUT.PartNumber, currentUUT.PartRevisionNumber, "", currentUUT.OperationType, currentUUT.SequenceName, currentUUT.SequenceVersion);
+                            UUTReport newUUT = apiRef.CreateUUTReport(currentUUT.Operator, currentUUT.PartNumber, currentUUT.PartRevisionNumber, "", currentUUT.OperationType, currentUUT.SequenceName, currentUUT.SequenceVersion);
                             newUUT.StartDateTime = currentUUT.StartDateTime;
                             newUUT.ExecutionTime = currentUUT.ExecutionTime;
-                            newUUT.StationName= currentUUT.StationName;
+                            newUUT.StationName = currentUUT.StationName;
                             currentUUT = newUUT;
                         }
                     }
                     break;
 
-                case "PassFail":                   
-                        uutStatusFromTester = (UUTStatusType)match.results[0];
+                case "PassFail":
+                    uutStatusFromTester = (UUTStatusType)match.results[0];
                     break;
                 case "NoTest":
                     uutStatusFromTester = UUTStatusType.Failed;
                     break;
 
                 case "Step":
-                    if (!IsNumeric(match.completeLine.Substring(0,1)))
+                    if (!IsNumeric(match.completeLine.Substring(0, 1)))
                         return true;
                     //Prepare the test step
                     NumericLimitStep step = currentUUT.GetRootSequenceCall().AddNumericLimitStep(
                         string.Format("{0}_{1}_{2}", match.GetSubField("Parts"), match.GetSubField("Value"), match.GetSubField("Function"))); //Use Parts_Value_Function as step name
 
-                    step.ReportText = String.Format("#{0} {1} Tol+:{2} Tol-:{3} H-pin:{4} L-pin:{5}", match.GetSubField("Step_number"),match.GetSubField("Comment"), match.GetSubField("Tolerance+"), match.GetSubField("Tolerance-"), match.GetSubField("H-pin"), match.GetSubField("L-pin"));
+                    step.ReportText = String.Format("#{0} {1} Tol+:{2} Tol-:{3} H-pin:{4} L-pin:{5}", match.GetSubField("Step_number"), match.GetSubField("Comment"), match.GetSubField("Tolerance+"), match.GetSubField("Tolerance-"), match.GetSubField("H-pin"), match.GetSubField("L-pin"));
                     if (match.ExistSubField("Net_Name_Hpin"))
                         step.ReportText += String.Format(" {0} {1}", match.GetSubField("Net_Name_Hpin"), match.GetSubField("Net_Name_Lpin"));
 
@@ -128,16 +129,29 @@ namespace TAKAYA_FlyingProbeConverter
                     else
                         measure = double.NaN;
                     measUnit = measUnit.ToUpper();
-                    if (measUnit != refUnit) //If reference units differ from measure units, use measure units
+                    if (measUnit != refUnit)
                     {
-                        double factorMeas = measUnit.Length <= 1 ? 1 :
-                            measUnit[0] == 'K' ? 1000 : measUnit[0] == 'M' ? 1000000 : measUnit[0] == 'U' ? 0.000001 : measUnit[0] == 'N' ? 0.000000001 : 1;
-                        double factorRef = refUnit.Length <= 1 ? 1 :
-                            refUnit[0] == 'K' ? 1000 : refUnit[0] == 'M' ? 1000000 : refUnit[0] == 'U' ? 0.000001 : refUnit[0] == 'N' ? 0.000000001 : 1;
-                        double factorAdjustRefWith = factorMeas * factorRef;
-                        lowLimit = lowLimit * factorAdjustRefWith;
-                        highLimit = highLimit * factorAdjustRefWith;
-                        refUnit = measUnit;
+                        if (converterArguments.ContainsKey("UnitCalcPreference") && converterArguments["UnitCalcPreference"].ToLower() == "limits") //To better support TSA, use this argument to use limits unit
+                        {
+                            double factorMeas = measUnit.Length <= 1 ? 1 :
+                                measUnit[0] == 'K' ? 1000 : measUnit[0] == 'M' ? 1000000 : measUnit[0] == 'U' ? 0.000001 : measUnit[0] == 'N' ? 0.000000001 : 1;
+                            double factorRef = refUnit.Length <= 1 ? 1 :
+                                refUnit[0] == 'K' ? 1000 : refUnit[0] == 'M' ? 1000000 : refUnit[0] == 'U' ? 0.000001 : refUnit[0] == 'N' ? 0.000000001 : 1;
+                            double factorAdjustMeasWith = factorMeas * factorRef;
+                            measure = measure * factorAdjustMeasWith;
+                            measUnit = refUnit;
+                        }
+                        else //Default, use Measure Unit on limits
+                        {
+                            double factorMeas = measUnit.Length <= 1 ? 1 :
+                                measUnit[0] == 'K' ? 1000 : measUnit[0] == 'M' ? 1000000 : measUnit[0] == 'U' ? 0.000001 : measUnit[0] == 'N' ? 0.000000001 : 1;
+                            double factorRef = refUnit.Length <= 1 ? 1 :
+                                refUnit[0] == 'K' ? 1000 : refUnit[0] == 'M' ? 1000000 : refUnit[0] == 'U' ? 0.000001 : refUnit[0] == 'N' ? 0.000000001 : 1;
+                            double factorAdjustRefWith = factorMeas * factorRef;
+                            lowLimit = lowLimit * factorAdjustRefWith;
+                            highLimit = highLimit * factorAdjustRefWith;
+                            refUnit = measUnit;
+                        }
                     }
 
                     //Check Function
@@ -176,7 +190,7 @@ namespace TAKAYA_FlyingProbeConverter
             searchFields.AddExactField(UUTField.StationName, ReportReadState.InHeader, "Test ID :", null, typeof(string));
             searchFields.AddExactField(UUTField.SequenceVersion, ReportReadState.InHeader, "Model:", null, typeof(string));
             searchFields.AddExactField(UUTField.Operator, ReportReadState.InHeader, "User name :", null, typeof(string));
-            
+
             searchFields.AddExactField(UUTField.SerialNumber, ReportReadState.Unknown, "Serial No.:", null, typeof(string));
 
             searchFields.AddExactField("Group", ReportReadState.InTest, "* GROUP No.", null, typeof(string));

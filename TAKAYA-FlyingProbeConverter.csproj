@@ -62,6 +62,9 @@
     <None Include="Examples\V682780_B_BOT-20230301082027.ATD">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="Examples\V682793_H_TOP-20230821081637.ATD">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

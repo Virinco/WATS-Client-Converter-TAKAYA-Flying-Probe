@@ -23,9 +23,11 @@ namespace TAKAYA_FlyingProbeConverter
         public void TestFlyingProbeConverter()
         {
             InitializeAPI(true);
-            var fileInfo = new FileInfo(@"Examples\V682780_B_BOT-20230301082027.ATD");
+            var fileInfo = new FileInfo(@"Examples\V682793_H_TOP-20230821081637.ATD");
             var arguments = new FlyingProbeConverter().ConverterParameters;
             SetConversionSource(fileInfo, new Dictionary<string, string>(), arguments);
+            //arguments.Add("UnitCalcPreference", "Measure"); //Calculate from Measure or Limits unit
+            arguments.Add("UnitCalcPreference", "Limits"); 
             var converter = new FlyingProbeConverter(arguments);
             using (FileStream file = fileInfo.Open(FileMode.Open))
             {
