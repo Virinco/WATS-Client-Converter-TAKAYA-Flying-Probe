@@ -137,7 +137,7 @@ namespace TAKAYA_FlyingProbeConverter
                                 measUnit[0] == 'K' ? 1000 : measUnit[0] == 'M' ? 1000000 : measUnit[0] == 'U' ? 0.000001 : measUnit[0] == 'N' ? 0.000000001 : 1;
                             double factorRef = refUnit.Length <= 1 ? 1 :
                                 refUnit[0] == 'K' ? 1000 : refUnit[0] == 'M' ? 1000000 : refUnit[0] == 'U' ? 0.000001 : refUnit[0] == 'N' ? 0.000000001 : 1;
-                            double factorAdjustMeasWith = factorMeas * factorRef;
+                            double factorAdjustMeasWith = factorMeas / factorRef;
                             measure = measure * factorAdjustMeasWith;
                             measUnit = refUnit;
                         }
