@@ -1,70 +1,39 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{6847A90F-C822-4001-9E46-0983B39DA052}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <!-- Builds two flavours: net472 (WATS.Client v6) and net8.0-windows10.0.18362 (Virinco.WATS v7) -->
+    <TargetFrameworks>net472;net8.0-windows10.0.18362</TargetFrameworks>
     <RootNamespace>TAKAYA_FlyingProbeConverter</RootNamespace>
     <AssemblyName>TAKAYA-FlyingProbeConverter</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <Deterministic>true</Deterministic>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- Keep existing AssemblyInfo.cs; suppress SDK auto-generation to avoid duplicates -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
+
+  <!-- WATS.Client 6.x – .NET Framework 4.7.2 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="WATS.Client" Version="6.1.134" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="ConverterTests.cs" />
-    <Compile Include="FlyingProbeConverter.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+
+  <!-- Virinco.WATS.ClientAPI 7.x + StandardConverters 7.x – .NET 8.0 Windows (also supports net48) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows10.0.18362'">
+    <PackageReference Include="Virinco.WATS.ClientAPI" Version="7.0.156" />
+    <PackageReference Include="Virinco.WATS.StandardConverters" Version="7.0.156" />
   </ItemGroup>
+
+  <!-- MSTest (NuGet-based, works on all target frameworks) -->
   <ItemGroup>
-    <PackageReference Include="WATS.Client">
-      <Version>5.1.159</Version>
-    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.7.3" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.7.3" />
   </ItemGroup>
+
+  <!-- Copy example files to output so test paths resolve -->
   <ItemGroup>
-    <Content Include="Examples\Readme.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Examples\PB2939800_E_BOT-20230420130239.ATD">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Examples\V682589_K_TOP-20230504130808.ATD">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Examples\V682780_B_BOT-20230301082027.ATD">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Examples\V682793_H_TOP-20230821081637.ATD">
+    <None Update="Examples\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
 </Project>

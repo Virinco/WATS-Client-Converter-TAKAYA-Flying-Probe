@@ -1,5 +1,9 @@
 ﻿# WATS Converter - TAKAYA Flying Probe
-A WATS Client converter plugin for importing test data from TAKAYA Flying Probe test system to WATS.
+A WATS Client converter plugin for importing test data from TAKAYA Flying Probe test systems to WATS.
+
+Supports two TAKAYA output formats:
+- **ATD** (tab-delimited, `.ATD`) — handled by `ATD_Converter`
+- **ATDX** (semicolon-delimited, newer format, `.atdx`) — handled by `ATDX_Converter`
 
 ## Getting Started
 
@@ -11,43 +15,66 @@ A WATS Client converter plugin for importing test data from TAKAYA Flying Probe 
 
 You can download the latest released version of the converter [here](https://github.com/Virinco/WATS-Client-Converter-TAKAYA-Flying-Probe/releases/latest). See the Custom Converter section in the [WATS Client Installation Guide](https://wats.com/download) for your version of the WATS Client for how to install a converter.
 
-### Test-sofware configuration
+Two pre-built DLL variants are published with each release:
 
-This is an example converter for TAKAYA Flying Probe that only supports output in the same format as the example files. Different configurations of the test software will require an accordingly different converter.
+| Build | Target framework | NuGet package used |
+|-------|------------------|--------------------|
+| `net472` | .NET Framework 4.7.2 | `WATS.Client` 6.x |
+| `net8.0-windows` | .NET 8.0 (Windows) | `Virinco.WATS.ClientAPI` + `Virinco.WATS.StandardConverters` 7.x |
+
+Use the `net472` build with WATS Client installations based on .NET Framework. Use the `net8.0-windows` build with WATS Client installations based on .NET 8.
+
+### Converters
+
+#### ATD_Converter
+Parses the classic TAKAYA ATD format (tab-delimited). The header section starts with `@`, groups are delineated by `* GROUP No.x *` markers, and each test step is a tab-separated data row.
+
+#### ATDX_Converter
+Parses the newer TAKAYA ATDX format (semicolon-delimited). The header section uses `#############"Main header"############` / `#############"Group header"#########` markers. Each test step is a semicolon-delimited data row matching the column header `Order;Aux;M.Aux;Parts;Value;...`.
+
+### Test-software configuration
+
+These are example converters for TAKAYA Flying Probe. They support output in the same format as the files in the `Examples` folder. Different configurations of the test software may produce variations that require converter adjustments.
 
 ### Parameters
 
-This converter uses the following parameters:
+Both converters share the following parameters:
 
-| Parameter         | Default value         | Description                                                    |
-|-------------------|-----------------------|----------------------------------------------------------------|
-| partNumber        | ABC123                | If log is missing a part number, use this one.                 |
-| partRevision      | 1.0                   | If log is missing a revision, use this one.                    |
-| sequenceName      | MainSequence          | If log is missing sequence name, use this one.                 |
-| sequenceVersion   | 1.0.0                 | If log is missing sequence version, use this one.              |
-| operationTypeCode | 10                    | If log is missing operation code (process code), use this one. |
-| operator          | sysoper               | If log is missing operator, use this one.                      |
-| stationName       | {Client station name} | If log is missing station name, use this one.                  |
-| testModeType      | Active                | Sets the mode to Active (computes status) or Import.           |
-| cultureCode       | en-US                 | Culture used for parsing numbers.                              |
-| fileEncoding      | 1252                  | File encoding of the file to import.                           |
-| validationMode    | ThrowExceptions       | ThrowExceptions or AutoTruncate.                               |
-| UnitCalcPreference| Measures              | Measures or Limits                                             |
+| Parameter          | Default value         | Description                                                    |
+|--------------------|-----------------------|----------------------------------------------------------------|
+| partNumber         | ABC123                | If log is missing a part number, use this one.                 |
+| partRevision       | 1.0                   | If log is missing a revision, use this one.                    |
+| sequenceName       | MainSequence          | If log is missing sequence name, use this one.                 |
+| sequenceVersion    | 1.0.0                 | If log is missing sequence version, use this one.              |
+| operationTypeCode  | 10                    | If log is missing operation code (process code), use this one. |
+| operator           | sysoper               | If log is missing operator, use this one.                      |
+| stationName        | {Client station name} | If log is missing station name, use this one.                  |
+| testModeType       | Active                | Sets the mode to Active (computes status) or Import.           |
+| cultureCode        | en-US                 | Culture used for parsing numbers.                              |
+| fileEncoding       | 1252                  | File encoding of the file to import.                           |
+| validationMode     | ThrowExceptions       | ThrowExceptions or AutoTruncate.                               |
+| UnitCalcPreference | Measures              | `Measures` or `Limits` — controls which unit is used as the basis when ref and measured units differ. |
+| GroupByComponentType | false               | `true` or `false` — when `true`, steps are grouped into sub-sequences by component type (e.g. `POWER_SHORTS`, `BOARD_SHORTS` for ATDX; `C`, `R`, `U` etc. for ATD). Step names always include the net names for unique identification. |
 
 ## Testing
 
-The project uses the [MSTest framework](https://docs.microsoft.com/en-us/visualstudio/test/quick-start-test-driven-development-with-test-explorer) for testing the converter.
+The project uses the [MSTest framework](https://docs.microsoft.com/en-us/visualstudio/test/quick-start-test-driven-development-with-test-explorer) for testing the converters.
 
-It is setup with two tests; one for setting up the API by registering the client to your WATS, and one for running the converter.
+Two test methods are provided:
+- `SetupClient` — registers your WATS server credentials (run once).
+- `TestATDConverter` — loops over all `.ATD` files in `Examples\ATD\` and submits each using `ATD_Converter`.
+- `TestATDXConverter` — loops over all `.atdx` files in `Examples\ATDX\` and submits each using `ATDX_Converter`.
 
-The values are hardcoded in the test, so you will need to change the values to reflect your setup.
-* In SetupClient, fill in your information in the the call to RegisterClient.
-* In TestConverter, fill in the path to the file you want to test the converter with. There are example files in the Examples folder.
-* Run SetupClient once, then you can run TestConverter as many times as you want.
+Each converter calls `apiRef.Submit(currentUUT)` directly during import, so reports are sent to the server immediately. Do **not** call `SubmitPendingReports()` after importing — it would re-process every file through the converter a second time and cause duplicate submissions.
+
+To run the tests:
+* In `SetupClient`, fill in your server, username, and password in the call to `RegisterClient`.
+* Run `SetupClient` once to register the client.
+* Run `TestATDConverter` and/or `TestATDXConverter` as needed.
 
 ## Contributing
 
-We're open to suggestions! Feel free open an issue or create a pull request.
+We're open to suggestions! Feel free to open an issue or create a pull request.
 
 Please read [Contributing](CONTRIBUTING.md) for details on contributions.
 
