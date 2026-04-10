@@ -1,8 +1,9 @@
 ﻿# WATS Converter - TAKAYA Flying Probe
 A WATS Client converter plugin for importing test data from TAKAYA Flying Probe test systems to WATS.
 
-Supports two TAKAYA output formats:
+Supports three TAKAYA output formats:
 - **ATD** (tab-delimited, `.ATD`) — handled by `ATD_Converter`
+- **ATD (APT94xx)** (quoted space-padded fields, `.ATD`) — handled by `APT94xx_ATD_Converter`
 - **ATDX** (semicolon-delimited, newer format, `.atdx`) — handled by `ATDX_Converter`
 
 ## Getting Started
@@ -31,6 +32,11 @@ Parses the classic TAKAYA ATD format (tab-delimited). The header section starts 
 
 #### ATDX_Converter
 Parses the newer TAKAYA ATDX format (semicolon-delimited). The header section uses `#############"Main header"############` / `#############"Group header"#########` markers. Each test step is a semicolon-delimited data row matching the column header `Order;Aux;M.Aux;Parts;Value;...`.
+
+#### APT94xx_ATD_Converter
+Parses ATD files produced by TAKAYA APT94xx testers. These use quoted, space-padded fields rather than tab-delimited columns. Operators are encoded in the `Serial No.` line (e.g. `Serial No.:21272-BU0296 (AT21 - OP819)`). Some file variants contain two sequential @-blocks (BOT + TOP), each producing a separate UUT report.
+
+See [APT94xx_README.md](APT94xx_README.md) for detailed setup instructions and converter arguments.
 
 ### Test-software configuration
 
@@ -64,6 +70,7 @@ Two test methods are provided:
 - `SetupClient` — registers your WATS server credentials (run once).
 - `TestATDConverter` — loops over all `.ATD` files in `Examples\ATD\` and submits each using `ATD_Converter`.
 - `TestATDXConverter` — loops over all `.atdx` files in `Examples\ATDX\` and submits each using `ATDX_Converter`.
+- `TestAPT94xx_ATD_Converter` — loops over all `.ATD` files in `Examples\APT94xx_ATD\` and submits each using `APT94xx_ATD_Converter`.
 
 Each converter calls `apiRef.Submit(currentUUT)` directly during import, so reports are sent to the server immediately. Do **not** call `SubmitPendingReports()` after importing — it would re-process every file through the converter a second time and cause duplicate submissions.
 

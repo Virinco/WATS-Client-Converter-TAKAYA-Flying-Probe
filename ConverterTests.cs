@@ -49,15 +49,15 @@ namespace TAKAYA_FlyingProbeConverter
         }
 
         [TestMethod]
-        public void TestAXIS_ATD_Converter()
+        public void TestAPT94xx_ATD_Converter()
         {
             InitializeAPI(true);
-            var directory = new DirectoryInfo(@"Examples\AXIS_ATDs");
-            var arguments = new AXIS_ATD_Converter().ConverterParameters;
+            var directory = new DirectoryInfo(@"Examples\APT94xx_ATD");
+            var arguments = new APT94xx_ATD_Converter().ConverterParameters;
             foreach (var fileInfo in directory.GetFiles("*.ATD", SearchOption.TopDirectoryOnly))
             {
                 SetConversionSource(fileInfo, new Dictionary<string, string>(), arguments);
-                var converter = new AXIS_ATD_Converter(arguments);
+                var converter = new APT94xx_ATD_Converter(arguments);
                 using (FileStream file = fileInfo.Open(FileMode.Open))
                 {
                     converter.ImportReport(this, file);

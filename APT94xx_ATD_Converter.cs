@@ -9,7 +9,7 @@ using Virinco.WATS.Integration.TextConverter;
 namespace TAKAYA_FlyingProbeConverter
 {
     /// <summary>
-    /// Converter for AXIS-format TAKAYA ATD files.
+    /// Converter for APT94xx-format TAKAYA ATD files.
     /// 
     /// Format differences from standard ATD:
     /// - Date format: yy/MM/dd HH:mm:ss  (not d/M/yyyy)
@@ -24,7 +24,7 @@ namespace TAKAYA_FlyingProbeConverter
     ///   operator1 → first token inside parentheses, always logged as UUT operator
     ///   operator2 → second token (if present), logged as MiscUUTInfo "Operator2"
     /// </summary>
-    public class AXIS_ATD_Converter : TextConverterBase
+    public class APT94xx_ATD_Converter : TextConverterBase
     {
         // Matches a quoted field: "content"
         private static readonly Regex QuotedField = new Regex(@"""([^""]*)""", RegexOptions.Compiled);
@@ -57,14 +57,15 @@ namespace TAKAYA_FlyingProbeConverter
         // Matches a time field like "7.0 ms" or "150.0 ms"
         private static readonly Regex TimeField = new Regex(@"^(\d+\.?\d*)\s*ms$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        public AXIS_ATD_Converter() : base()
+        public APT94xx_ATD_Converter() : base()
         {
             converterArguments["operationTypeCodeTop"] = "30";
             converterArguments["operationTypeCodeBottom"] = "31";
             converterArguments["GroupByComponentType"] = "true";
+            converterArguments["testModeType"] = "Import";
         }
 
-        public AXIS_ATD_Converter(IDictionary<string, string> args) : base(args)
+        public APT94xx_ATD_Converter(IDictionary<string, string> args) : base(args)
         {
             currentCulture = InvariantCulture;
             searchFields.culture = InvariantCulture;
@@ -78,13 +79,20 @@ namespace TAKAYA_FlyingProbeConverter
 
             searchFields.AddRegExpField("PassFail", ReportReadState.InHeader,
                 @"^\*\s+(?<Result>PASS|FAIL)\s+\*", null, typeof(UUTStatusType));
+            // Duplicate for InTest: multi-block files have block 2 header parsed in InTest state
+            searchFields.AddRegExpField("PassFail", ReportReadState.InTest,
+                @"^\*\s+(?<Result>PASS|FAIL)\s+\*", null, typeof(UUTStatusType));
 
             searchFields.AddExactField("Model", ReportReadState.InHeader, "Model:", null, typeof(string));
+            searchFields.AddExactField("Model", ReportReadState.InTest, "Model:", null, typeof(string));
             searchFields.AddRegExpField("Date", ReportReadState.InHeader,
+                @"^DATE\s+(?<Value>\S+\s+\S+)", null, typeof(string));
+            searchFields.AddRegExpField("Date", ReportReadState.InTest,
                 @"^DATE\s+(?<Value>\S+\s+\S+)", null, typeof(string));
 
             // Optional Test ID field (appears in files produced after 25/3/26)
             searchFields.AddExactField("TestID", ReportReadState.InHeader, "Test ID :", null, typeof(string));
+            searchFields.AddExactField("TestID", ReportReadState.InTest, "Test ID :", null, typeof(string));
 
             // GROUP header — always GROUP No.1 in these files; just signals group start
             searchFields.AddRegExpField("Group", ReportReadState.InHeader,
@@ -181,16 +189,20 @@ namespace TAKAYA_FlyingProbeConverter
                         serial,
                         apiRef.GetOperationType(opCode),
                         _pendingPartNumber ?? string.Empty,
-                        batchCode);
+                        _pendingRevision ?? string.Empty);
 
+                    if (!string.IsNullOrEmpty(batchCode))
+                        currentUUT.BatchSerialNumber = batchCode;
                     if (_pendingDate != default)
                         currentUUT.StartDateTime = _pendingDate;
-                    // Prefer TestID-derived station name, fall back to first operator (often the station/machine ID)
-                    string stationName = !string.IsNullOrEmpty(_pendingStationName) ? _pendingStationName : operator1;
-                    if (!string.IsNullOrEmpty(stationName))
-                        currentUUT.StationName = stationName;
+                    // Station name comes from converter argument (configured in WATS Client), not from the file
+                    if (converterArguments.ContainsKey("stationName") && !string.IsNullOrEmpty(converterArguments["stationName"]))
+                        currentUUT.StationName = converterArguments["stationName"];
+                    else if (!string.IsNullOrEmpty(_pendingStationName))
+                        currentUUT.StationName = _pendingStationName;
+                    // operator1 is already set via CreateUUTReport; add operator2 as misc info
                     if (!string.IsNullOrEmpty(operator2))
-                        currentUUT.AddMiscUUTInfo("Operator2", operator2);
+                        currentUUT.AddMiscUUTInfo("Operator 2", operator2);
                     if (!string.IsNullOrEmpty(_pendingSoftwareVersion))
                         currentUUT.SequenceVersion = _pendingSoftwareVersion;
                     if (!string.IsNullOrEmpty(_pendingSoftwareFileName))
@@ -395,11 +407,13 @@ namespace TAKAYA_FlyingProbeConverter
             step.ReportText = string.Format("Parts:{0} Value:{1} Ref:{2} Meas:{3} Function:{4}",
                 parts, valueFld, measureFields.Count > 0 ? measureFields[0] : "", measValStr.Length > 0 ? measValStr + " " + measUnit : "", function);
 
+            // In Import mode we must set step status manually from the tester's judgement
             if (isJump)
             {
                 step.Status = StepStatusType.Skipped;
                 return;
             }
+            step.Status = judgement == "FAIL" ? StepStatusType.Failed : StepStatusType.Passed;
 
             // Parse numeric ref value
             if (!double.TryParse(refValStr, NumberStyles.Any, InvariantCulture, out double refValue))
