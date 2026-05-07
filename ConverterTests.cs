@@ -54,6 +54,8 @@ namespace TAKAYA_FlyingProbeConverter
             InitializeAPI(true);
             var directory = new DirectoryInfo(@"Examples\APT94xx_ATD");
             var arguments = new APT94xx_ATD_Converter().ConverterParameters;
+            // Offline TDM only registers operation type 30; map bottom-side code to same value
+            arguments["operationTypeCodeBottom"] = "30";
             foreach (var fileInfo in directory.GetFiles("*.ATD", SearchOption.TopDirectoryOnly))
             {
                 SetConversionSource(fileInfo, new Dictionary<string, string>(), arguments);

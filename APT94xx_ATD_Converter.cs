@@ -34,7 +34,7 @@ namespace TAKAYA_FlyingProbeConverter
         private static readonly Regex Tolerance = new Regex(@"([+-]\d+(?:\.\d+)?)%", RegexOptions.Compiled);
 
         private static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
-        private static readonly string[] DateFormats = { "yy/MM/dd HH:mm:ss", "yy/MM/dd H:mm:ss" };
+        private static readonly string[] DateFormats = { "dd/MM/yy HH:mm:ss", "dd/MM/yy H:mm:ss" };
 
         private UUTStatusType _uutStatusFromTester;
         private readonly Dictionary<string, SequenceCall> _componentGroups = new Dictionary<string, SequenceCall>();
@@ -63,6 +63,7 @@ namespace TAKAYA_FlyingProbeConverter
             converterArguments["operationTypeCodeBottom"] = "31";
             converterArguments["GroupByComponentType"] = "true";
             converterArguments["testModeType"] = "Import";
+            converterArguments["stationNameFromOperator"] = "false";
         }
 
         public APT94xx_ATD_Converter(IDictionary<string, string> args) : base(args)
@@ -173,6 +174,13 @@ namespace TAKAYA_FlyingProbeConverter
                         SubmitCurrentUUT();
                     }
 
+                    // When stationNameFromOperator=true, the first token in parentheses is the
+                    // machine/station name (e.g. FP1, FP2, FP3) and the second is the human operator.
+                    bool stationFromOp = converterArguments.ContainsKey("stationNameFromOperator") &&
+                        converterArguments["stationNameFromOperator"].Equals("true", StringComparison.OrdinalIgnoreCase);
+                    string uutOperator = stationFromOp ? operator2 : operator1;
+                    string serialStationName = stationFromOp ? operator1 : null;
+
                     // Pick operation type code based on side (T/B)
                     string opCode;
                     if (string.Equals(_pendingSide, "B", StringComparison.OrdinalIgnoreCase))
@@ -183,7 +191,7 @@ namespace TAKAYA_FlyingProbeConverter
                             ? converterArguments["operationTypeCodeTop"] : "30";
 
                     currentUUT = apiRef.CreateUUTReport(
-                        operator1,
+                        uutOperator,
                         _pendingPartNumber ?? string.Empty,
                         _pendingRevision ?? string.Empty,
                         serial,
@@ -195,13 +203,23 @@ namespace TAKAYA_FlyingProbeConverter
                         currentUUT.BatchSerialNumber = batchCode;
                     if (_pendingDate != default)
                         currentUUT.StartDateTime = _pendingDate;
-                    // Station name comes from converter argument (configured in WATS Client), not from the file
-                    if (converterArguments.ContainsKey("stationName") && !string.IsNullOrEmpty(converterArguments["stationName"]))
-                        currentUUT.StationName = converterArguments["stationName"];
-                    else if (!string.IsNullOrEmpty(_pendingStationName))
-                        currentUUT.StationName = _pendingStationName;
-                    // operator1 is already set via CreateUUTReport; add operator2 as misc info
-                    if (!string.IsNullOrEmpty(operator2))
+                    // Station name priority:
+                    // 1. Test ID from file (ground truth — which machine actually ran the test)
+                    // 2. First operator token (when stationNameFromOperator=true)
+                    // 3. stationName converter arg (fallback for old firmware without Test ID,
+                    //    or explicit override — note: base class auto-fills this with the
+                    //    WATS Client machine name, so it is only used when no file value exists)
+                    string resolvedStationName = null;
+                    if (!string.IsNullOrEmpty(_pendingStationName))
+                        resolvedStationName = _pendingStationName;
+                    else if (!string.IsNullOrEmpty(serialStationName))
+                        resolvedStationName = serialStationName;
+                    else if (converterArguments.ContainsKey("stationName") && !string.IsNullOrEmpty(converterArguments["stationName"]))
+                        resolvedStationName = converterArguments["stationName"];
+                    if (!string.IsNullOrEmpty(resolvedStationName))
+                        currentUUT.StationName = resolvedStationName;
+                    // When not using stationNameFromOperator, add operator2 as misc info (legacy behaviour)
+                    if (!stationFromOp && !string.IsNullOrEmpty(operator2))
                         currentUUT.AddMiscUUTInfo("Operator 2", operator2);
                     if (!string.IsNullOrEmpty(_pendingSoftwareVersion))
                         currentUUT.SequenceVersion = _pendingSoftwareVersion;
@@ -316,16 +334,17 @@ namespace TAKAYA_FlyingProbeConverter
             string measUnit = "";
             string function = "";
 
-            // Find judgement field (contains PASS, FAIL, or only dots)
+            // Find judgement field (contains PASS, FAIL, OPEN, SHORT, or 6-dot skip marker).
+            // All verdict fields in ATD files have trailing spaces (e.g. "PASS   "), so trim before comparing.
             int judgementIdx = -1;
             for (int i = 3; i < quoted.Count; i++)
             {
-                string v = quoted[i];
-                if (v == "PASS" || v == "FAIL" || v.Replace(".", "").Length == 0 ||
-                    v.Trim() == "......")
+                string vt = quoted[i].Trim();
+                if (vt == "PASS" || vt == "FAIL" || vt == "OPEN" || vt == "SHORT" ||
+                    vt == "......")
                 {
                     judgementIdx = i;
-                    judgement = v.Trim();
+                    judgement = vt;
                     break;
                 }
             }
@@ -341,7 +360,14 @@ namespace TAKAYA_FlyingProbeConverter
             {
                 ParseMeasurement(measureFields[0], out refValStr, out refUnit);
             }
-            if (measureFields.Count >= 2 && !IsDots(measureFields[1]))
+            // When 3 measurement fields are present (no dots on the 3rd), TAKAYA uses the
+            // final (3rd) field as the decisive measurement; the middle field is an intermediate
+            // probe pass that can be out of the acceptance window.
+            if (measureFields.Count >= 3 && !IsDots(measureFields[2]))
+            {
+                ParseMeasurement(measureFields[2], out measValStr, out measUnit);
+            }
+            else if (measureFields.Count >= 2 && !IsDots(measureFields[1]))
             {
                 ParseMeasurement(measureFields[1], out measValStr, out measUnit);
             }
@@ -399,37 +425,90 @@ namespace TAKAYA_FlyingProbeConverter
             bool groupByType = converterArguments.ContainsKey("GroupByComponentType") &&
                                converterArguments["GroupByComponentType"].Equals("true", StringComparison.OrdinalIgnoreCase);
             SequenceCall seq = groupByType ? GetOrAddSequenceCall(group) : currentUUT.GetRootSequenceCall();
-            NumericLimitStep step = seq.AddNumericLimitStep(stepName);
 
-            if (stepTimeMs > 0)
-                step.StepTime = stepTimeMs / 1000.0; // Convert ms to seconds
-
-            step.ReportText = string.Format("Parts:{0} Value:{1} Ref:{2} Meas:{3} Function:{4}",
+            string reportText = string.Format("Parts:{0} Value:{1} Ref:{2} Meas:{3} Function:{4}",
                 parts, valueFld, measureFields.Count > 0 ? measureFields[0] : "", measValStr.Length > 0 ? measValStr + " " + measUnit : "", function);
 
-            // In Import mode we must set step status manually from the tester's judgement
+            // Parse ref value and limits (needed for both single-step and loop paths)
+            if (!double.TryParse(refValStr, NumberStyles.Any, InvariantCulture, out double refValue))
+            {
+                // Non-numeric ref — log as single step with no test (jump/skip already handled above)
+                if (!isJump)
+                {
+                    NumericLimitStep s = seq.AddNumericLimitStep(stepName);
+                    if (stepTimeMs > 0) s.StepTime = stepTimeMs / 1000.0;
+                    s.ReportText = reportText;
+                    s.Status = judgement == "PASS" ? StepStatusType.Passed : StepStatusType.Failed;
+                }
+                return;
+            }
+
+            double highTol = tolerances.Count > 0 ? Math.Abs(tolerances[0]) / 100.0 : 0.1;
+            double lowTol = tolerances.Count > 1 ? Math.Abs(tolerances[1]) / 100.0 : highTol;
+            double highLimit = refValue + refValue * highTol;
+            double lowLimit = refValue - refValue * lowTol;
+            string unit = NormalizeUnit(!string.IsNullOrEmpty(measUnit) ? measUnit : refUnit);
+
+            // When two non-dots measurement fields exist, TAKAYA ran two probe attempts.
+            // Log them as a looped step so both tries are preserved in the report.
+            bool isDualMeasurement = !isJump && measureFields.Count >= 3 && !IsDots(measureFields[2]);
+            if (isDualMeasurement)
+            {
+                ParseMeasurement(measureFields[1], out string meas1Str, out string meas1Unit);
+                ParseMeasurement(measureFields[2], out string meas2Str, out string meas2Unit);
+                double.TryParse(meas1Str, NumberStyles.Any, InvariantCulture, out double meas1Val);
+                double.TryParse(meas2Str, NumberStyles.Any, InvariantCulture, out double meas2Val);
+                string unit1 = NormalizeUnit(!string.IsNullOrEmpty(meas1Unit) ? meas1Unit : refUnit);
+                string unit2 = NormalizeUnit(!string.IsNullOrEmpty(meas2Unit) ? meas2Unit : refUnit);
+
+                bool iter0Pass = EvaluateFunctionTest(function, meas1Val, lowLimit, highLimit, refValue);
+                bool iter1Pass = judgement == "PASS";
+                int passedCount = (iter0Pass ? 1 : 0) + (iter1Pass ? 1 : 0);
+                int failedCount = 2 - passedCount;
+
+                // Summary step: shows final-iteration value, total counts, ends at index 2 (1-based = last of 2 iterations)
+                NumericLimitStep summary = seq.StartLoop<NumericLimitStep>(stepName, (short)2, (short)passedCount, (short)failedCount, (short)2);
+                if (stepTimeMs > 0) summary.StepTime = stepTimeMs / 1000.0;
+                summary.ReportText = reportText;
+                summary.Status = iter1Pass ? StepStatusType.Passed : StepStatusType.Failed;
+                AddFunctionTest(summary, function, meas2Val, lowLimit, highLimit, refValue, unit2);
+
+                // Iteration 0 — intermediate probe attempt
+                NumericLimitStep iter0 = seq.AddNumericLimitStep(stepName, 0);
+                iter0.Status = iter0Pass ? StepStatusType.Passed : StepStatusType.Failed;
+                AddFunctionTest(iter0, function, meas1Val, lowLimit, highLimit, refValue, unit1);
+
+                // Iteration 1 — final decisive measurement
+                NumericLimitStep iter1 = seq.AddNumericLimitStep(stepName, 1);
+                iter1.Status = iter1Pass ? StepStatusType.Passed : StepStatusType.Failed;
+                AddFunctionTest(iter1, function, meas2Val, lowLimit, highLimit, refValue, unit2);
+
+                seq.StopLoop();
+                return;
+            }
+
+            // Single-measurement path
+            NumericLimitStep step = seq.AddNumericLimitStep(stepName);
+            if (stepTimeMs > 0)
+                step.StepTime = stepTimeMs / 1000.0;
+            step.ReportText = reportText;
+
             if (isJump)
             {
                 step.Status = StepStatusType.Skipped;
                 return;
             }
-            step.Status = judgement == "FAIL" ? StepStatusType.Failed : StepStatusType.Passed;
-
-            // Parse numeric ref value
-            if (!double.TryParse(refValStr, NumberStyles.Any, InvariantCulture, out double refValue))
-                return; // non-numeric ref (open/short tests with 409.5 handled below)
-
-            double highTol = tolerances.Count > 0 ? Math.Abs(tolerances[0]) / 100.0 : 0.1;
-            double lowTol = tolerances.Count > 1 ? Math.Abs(tolerances[1]) / 100.0 : highTol;
-
-            double highLimit = refValue + refValue * highTol;
-            double lowLimit = refValue - refValue * lowTol;
+            step.Status = judgement == "PASS" ? StepStatusType.Passed : StepStatusType.Failed;
 
             if (!double.TryParse(measValStr, NumberStyles.Any, InvariantCulture, out double measure))
                 measure = double.NaN;
 
-            string unit = NormalizeUnit(!string.IsNullOrEmpty(measUnit) ? measUnit : refUnit);
+            AddFunctionTest(step, function, measure, lowLimit, highLimit, refValue, unit);
+        }
 
+        private static void AddFunctionTest(NumericLimitStep step, string function, double measure,
+            double lowLimit, double highLimit, double refValue, string unit)
+        {
             switch (function)
             {
                 case "**":
@@ -447,6 +526,23 @@ namespace TAKAYA_FlyingProbeConverter
                     step.AddTest(measure, CompOperatorType.GE, refValue, unit); break;
                 default:
                     step.AddTest(measure, CompOperatorType.GELE, lowLimit, highLimit, unit); break;
+            }
+        }
+
+        private static bool EvaluateFunctionTest(string function, double measure,
+            double lowLimit, double highLimit, double refValue)
+        {
+            if (double.IsNaN(measure)) return false;
+            switch (function)
+            {
+                case "**":
+                case "D":   return measure >= lowLimit && measure <= highLimit;
+                case "SH":  return measure < 10;
+                case "OP":  return measure > 100;
+                case "E":
+                case "E ":  return measure <= refValue;
+                case "F":   return measure >= refValue;
+                default:    return measure >= lowLimit && measure <= highLimit;
             }
         }
 
